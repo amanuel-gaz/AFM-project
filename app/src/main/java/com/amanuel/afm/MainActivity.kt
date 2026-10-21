@@ -1,55 +1,25 @@
 package com.amanuel.afm
-
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.viewModels
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import com.amanuel.afm.ui.theme.DarkNavyBackground
-import com.amanuel.afm.ui.viewmodel.FinanceViewModel
-
-class MainActivity : ComponentActivity() {
-
-    private val viewModel: FinanceViewModel by viewModels()
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = DarkNavyBackground
-                ) {
-                    // AFM Native Dashboard Compose Entry
-                    AFMAppContent(viewModel = viewModel)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun AFMAppContent(viewModel: FinanceViewModel) {
-    val metrics by viewModel.metrics.collectAsState()
-    val transactions by viewModel.allTransactions.collectAsState()
-
-    // Full Compose UI containing Balance Card, Income/Expense chips, and Recent Transactions
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(androidx.compose.foundation.layout.WindowInsets.statusBars.asPaddingValues())
-    ) {
-        Text(
-            text = "AFM — Amanuel Finance Manager",
-            style = MaterialTheme.typography.titleLarge,
-            color = Color.White,
-            modifier = Modifier.padding(16.dp)
-        )
-        // Dashboard cards, charts, and transaction list
-    }
+import android.view.View
+import android.widget.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+class MainActivity:Activity(){
+ private lateinit var root:LinearLayout; private val cats=arrayOf("House rent","Food","Transport","Phone / Internet","Utilities","Salary","Transfer","Shopping","Education","Health","Other")
+ override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);home();if(android.os.Build.VERSION.SDK_INT>=23&&checkSelfPermission(Manifest.permission.RECEIVE_SMS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(arrayOf(Manifest.permission.RECEIVE_SMS),100)}
+ private fun setup(title:String){root=LinearLayout(this).apply{orientation=1;setPadding(22,20,22,22);setBackgroundColor(0xFFF5F7F7.toInt())};root.addView(TextView(this).apply{text=title;textSize=25f;setTextColor(0xFF00695C.toInt());setTypeface(null,1);setPadding(0,0,0,14)});setContentView(ScrollView(this).apply{addView(root)})}
+ private fun txt(s:String,size:Float=16f,b:Boolean=false){root.addView(TextView(this).apply{text=s;textSize=size;setTextColor(0xFF263238.toInt());if(b)setTypeface(null,1);setPadding(0,5,0,7)})}
+ private fun btn(s:String,f:()->Unit){root.addView(Button(this).apply{text=s;setOnClickListener{f()}})}
+ private fun money(v:Double)=String.format(Locale.US,"%,.2f",v)
+ private fun home(){setup("Amanuel AOS");val l=Store.all(this);val i=l.filter{it.type=="Income"}.sumOf{it.amount};val e=l.filter{it.type=="Expense"}.sumOf{it.amount};txt("Income total: ${money(i)} ETB",18f,true);txt("Expense total: ${money(e)} ETB",18f,true);txt("Net recorded: ${money(i-e)} ETB",18f,true);txt("Transactions: ${l.size} • Need review: ${l.count{!it.confirmed}}");txt("Sources: CBE / CBE Birr / Telebirr / Awash Bank",14f);txt("Local storage only. Never enter bank PIN, password, or OTP.");btn("View transactions"){transactions()};btn("Add transaction manually"){manual()};btn("Export CSV"){export()};btn("How it works / limitations"){info()}}
+ private fun transactions(){setup("Transactions");val l=Store.all(this);if(l.isEmpty())txt("No transactions yet. New matching SMS alerts may be captured.");l.forEach{t->txt("${t.type} • ${money(t.amount)} ETB",17f,true);txt("${SimpleDateFormat("dd MMM yyyy, HH:mm",Locale.getDefault()).format(Date(t.date))} | ${t.source} | ${t.reason}");if(!t.confirmed)btn("Choose reason for ${money(t.amount)} ETB"){reason(t.id)};txt("SMS: ${t.rawText.take(130)}",12f);root.addView(View(this).apply{setBackgroundColor(0xFFDDE5E4.toInt());layoutParams=LinearLayout.LayoutParams(-1,1)})};btn("Back"){home()}}
+ private fun reason(id:Long){setup("Choose reason");val s=Spinner(this);s.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,cats);root.addView(s);btn("Save reason"){Store.update(this,id,s.selectedItem.toString());transactions()};btn("Cancel"){transactions()}}
+ private fun manual(){setup("Add transaction");val type=Spinner(this);type.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,arrayOf("Expense","Income"));root.addView(type);val amount=EditText(this).apply{hint="Amount in ETB";inputType=8194};root.addView(amount);val source=Spinner(this);source.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,arrayOf("Cash","CBE","CBE Birr","Telebirr","Awash Bank"));root.addView(source);val cat=Spinner(this);cat.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,cats);root.addView(cat);val note=EditText(this).apply{hint="Optional note"};root.addView(note);btn("Save transaction"){val v=amount.text.toString().replace(",","").toDoubleOrNull();if(v==null||v<=0){amount.error="Enter a valid amount";return@btn};Store.add(this,Transaction(System.currentTimeMillis(),System.currentTimeMillis(),source.selectedItem.toString(),type.selectedItem.toString(),v,cat.selectedItem.toString()+if(note.text.isNotBlank())" — ${note.text}" else "","Manual entry",true));home()};btn("Cancel"){home()}}
+ private fun export(){val csv=buildString{append("Date,Type,Amount ETB,Source,Reason,Confirmed\n");Store.all(this@MainActivity).forEach{t->val d=SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.US).format(Date(t.date));append("\"$d\",\"${t.type}\",${t.amount},\"${t.source}\",\"${t.reason.replace("\"","\"\"")}\",${t.confirmed}\n")}};startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="text/csv";putExtra(Intent.EXTRA_SUBJECT,"AOS transactions CSV");putExtra(Intent.EXTRA_TEXT,csv)},"Share CSV"))}
+ private fun info(){setup("How AOS works");txt("AOS tries to recognize new SMS transaction alerts, classify income or expense, and guess common reasons. Unknown reasons need your review.");txt("Important limitations",18f,true);txt("• Starter prototype; bank SMS formats have not been verified for every provider.\n• It does not connect to bank APIs or import old transactions.\n• Verify every record against your bank app.\n• SMS permission is required. No server upload is included.\n• Never enter your bank PIN, password, or OTP.");btn("Back"){home()}}
 }
