@@ -1,4 +1,4 @@
 <resources>
-    <style name="Theme.AFM" parent="android:Theme.DeviceDefault.DayNight.NoActionBar">
+    <style name="Theme.AFM" parent="android:style/Theme.Light.NoActionBar">
     </style>
 </resources>
